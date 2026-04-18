@@ -41,10 +41,7 @@ export function createNxJsonFile(
   const entries: TargetDefaultEntry[] = Array.isArray(nxJson.targetDefaults)
     ? [...nxJson.targetDefaults]
     : [];
-  const upsert = (
-    target: string,
-    patch: Partial<TargetDefaultEntry>
-  ): void => {
+  const upsert = (target: string, patch: Partial<TargetDefaultEntry>): void => {
     const idx = entries.findIndex(
       (e) =>
         e.target === target &&

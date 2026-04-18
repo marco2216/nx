@@ -20,34 +20,56 @@ function node(
 describe('findBestTargetDefault', () => {
   it('returns null on empty entries', () => {
     expect(
-      findBestTargetDefault('test', undefined, undefined, undefined, undefined, [])
+      findBestTargetDefault(
+        'test',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        []
+      )
     ).toBeNull();
   });
 
   it('matches exact target name', () => {
-    const entries: TargetDefaultEntry[] = [
-      { target: 'test', cache: true },
-    ];
+    const entries: TargetDefaultEntry[] = [{ target: 'test', cache: true }];
     expect(
-      findBestTargetDefault('test', undefined, undefined, undefined, undefined, entries)
+      findBestTargetDefault(
+        'test',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        entries
+      )
     ).toEqual({ cache: true });
   });
 
   it('returns null when no target matches', () => {
-    const entries: TargetDefaultEntry[] = [
-      { target: 'build', cache: true },
-    ];
+    const entries: TargetDefaultEntry[] = [{ target: 'build', cache: true }];
     expect(
-      findBestTargetDefault('test', undefined, undefined, undefined, undefined, entries)
+      findBestTargetDefault(
+        'test',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        entries
+      )
     ).toBeNull();
   });
 
   it('matches a target glob', () => {
-    const entries: TargetDefaultEntry[] = [
-      { target: 'test:*', cache: true },
-    ];
+    const entries: TargetDefaultEntry[] = [{ target: 'test:*', cache: true }];
     expect(
-      findBestTargetDefault('test:ci', undefined, undefined, undefined, undefined, entries)
+      findBestTargetDefault(
+        'test:ci',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        entries
+      )
     ).toEqual({ cache: true });
   });
 
@@ -131,7 +153,14 @@ describe('findBestTargetDefault', () => {
       { target: 'test', inputs: ['second'] },
     ];
     expect(
-      findBestTargetDefault('test', undefined, undefined, undefined, undefined, entries)
+      findBestTargetDefault(
+        'test',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        entries
+      )
     ).toEqual({ inputs: ['second'] });
   });
 
@@ -141,13 +170,24 @@ describe('findBestTargetDefault', () => {
       { target: 'test', inputs: ['exact'] },
     ];
     expect(
-      findBestTargetDefault('test', undefined, undefined, undefined, undefined, entries)
+      findBestTargetDefault(
+        'test',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        entries
+      )
     ).toEqual({ inputs: ['exact'] });
   });
 
   it('matches by project tag pattern', () => {
     const entries: TargetDefaultEntry[] = [
-      { target: 'test', projects: 'tag:dotnet', options: { configuration: 'Release' } },
+      {
+        target: 'test',
+        projects: 'tag:dotnet',
+        options: { configuration: 'Release' },
+      },
     ];
     expect(
       findBestTargetDefault(
@@ -226,7 +266,14 @@ describe('findBestTargetDefault', () => {
       { target: 'test', projects: 'web', inputs: ['x'] },
     ];
     expect(
-      findBestTargetDefault('test', undefined, undefined, undefined, undefined, entries)
+      findBestTargetDefault(
+        'test',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        entries
+      )
     ).toBeNull();
   });
 });

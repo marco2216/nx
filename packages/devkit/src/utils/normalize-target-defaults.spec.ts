@@ -36,10 +36,7 @@ describe('normalizeTargetDefaults', () => {
         build: undefined as any,
         lint: null as any,
       })
-    ).toEqual([
-      { target: 'build' },
-      { target: 'lint' },
-    ]);
+    ).toEqual([{ target: 'build' }, { target: 'lint' }]);
   });
 });
 
@@ -58,7 +55,9 @@ describe('isTargetDefaultsArray', () => {
 
 describe('findTargetDefaultEntry', () => {
   it('returns undefined when target defaults absent', () => {
-    expect(findTargetDefaultEntry(undefined, { target: 'test' })).toBeUndefined();
+    expect(
+      findTargetDefaultEntry(undefined, { target: 'test' })
+    ).toBeUndefined();
   });
 
   it('finds an entry in the array shape by target only', () => {
@@ -98,10 +97,7 @@ describe('findTargetDefaultEntry', () => {
 
   it('returns the unfiltered record entry when no filters requested', () => {
     expect(
-      findTargetDefaultEntry(
-        { build: { cache: true } },
-        { target: 'build' }
-      )
+      findTargetDefaultEntry({ build: { cache: true } }, { target: 'build' })
     ).toEqual({ target: 'build', cache: true });
   });
 

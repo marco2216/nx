@@ -35,10 +35,7 @@ function setupE2ETargetDefaults(tree: Tree) {
   const patch: Partial<TargetConfiguration> = {};
   if (!existing?.cache) patch.cache = true;
   if (!existing?.inputs) {
-    patch.inputs = [
-      'default',
-      productionFileSet ? '^production' : '^default',
-    ];
+    patch.inputs = ['default', productionFileSet ? '^production' : '^default'];
   }
   if (Object.keys(patch).length > 0) {
     upsertTargetDefault(tree, { target: 'e2e', ...patch });
@@ -52,9 +49,7 @@ function findExistingE2eDefault(
   if (Array.isArray(td)) {
     return td.find(
       (e) =>
-        e.target === 'e2e' &&
-        e.projects === undefined &&
-        e.source === undefined
+        e.target === 'e2e' && e.projects === undefined && e.source === undefined
     );
   }
   return td['e2e'];

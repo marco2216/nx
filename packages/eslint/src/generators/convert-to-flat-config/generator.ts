@@ -194,10 +194,7 @@ function updateNxJsonConfig(tree: Tree, format: 'cjs' | 'mjs') {
       if (td) {
         if (Array.isArray(td)) {
           for (const entry of td) {
-            if (
-              entry.target === 'lint' ||
-              entry.target === '@nx/eslint:lint'
-            ) {
+            if (entry.target === 'lint' || entry.target === '@nx/eslint:lint') {
               addInputToEntry(entry);
             }
           }

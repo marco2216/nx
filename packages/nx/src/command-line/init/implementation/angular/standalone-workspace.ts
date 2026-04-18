@@ -101,10 +101,7 @@ function createNxJson(
   const defaults: TargetDefaultEntry[] = Array.isArray(nxJson.targetDefaults)
     ? [...nxJson.targetDefaults]
     : [];
-  const upsert = (
-    target: string,
-    patch: Partial<TargetDefaultEntry>
-  ): void => {
+  const upsert = (target: string, patch: Partial<TargetDefaultEntry>): void => {
     const idx = defaults.findIndex(
       (e) =>
         e.target === target &&
