@@ -1,8 +1,138 @@
 import { createTreeWithEmptyWorkspace } from 'nx/src/devkit-testing-exports';
 import { readNxJson, updateNxJson, type Tree } from 'nx/src/devkit-exports';
 import { TempFs } from 'nx/src/internal-testing-utils/temp-fs';
-import { addE2eCiTargetDefaults } from './target-defaults-utils';
+import {
+  addBuildTargetDefaults,
+  addE2eCiTargetDefaults,
+  upsertTargetDefault,
+} from './target-defaults-utils';
 describe('target-defaults-utils', () => {
+  describe('upsertTargetDefault', () => {
+    let tree: Tree;
+    beforeEach(() => {
+      tree = createTreeWithEmptyWorkspace();
+    });
+
+    it('appends a new entry when nx.json has no targetDefaults', () => {
+      const nxJson = readNxJson(tree);
+      delete nxJson.targetDefaults;
+      updateNxJson(tree, nxJson);
+
+      upsertTargetDefault(tree, { target: 'test', cache: true });
+
+      expect(readNxJson(tree).targetDefaults).toEqual([
+        { target: 'test', cache: true },
+      ]);
+    });
+
+    it('merges into an existing array entry with same filter tuple', () => {
+      const nxJson = readNxJson(tree);
+      nxJson.targetDefaults = [{ target: 'test', cache: true }];
+      updateNxJson(tree, nxJson);
+
+      upsertTargetDefault(tree, { target: 'test', inputs: ['default'] });
+
+      expect(readNxJson(tree).targetDefaults).toEqual([
+        { target: 'test', cache: true, inputs: ['default'] },
+      ]);
+    });
+
+    it('appends a new array entry when filter tuple differs', () => {
+      const nxJson = readNxJson(tree);
+      nxJson.targetDefaults = [{ target: 'test', cache: true }];
+      updateNxJson(tree, nxJson);
+
+      upsertTargetDefault(tree, {
+        target: 'test',
+        source: '@nx/vite',
+        inputs: ['vite'],
+      });
+
+      expect(readNxJson(tree).targetDefaults).toEqual([
+        { target: 'test', cache: true },
+        { target: 'test', source: '@nx/vite', inputs: ['vite'] },
+      ]);
+    });
+
+    it('preserves legacy record shape when no filters are specified', () => {
+      const nxJson = readNxJson(tree);
+      (nxJson as any).targetDefaults = {
+        build: { cache: true },
+      };
+      updateNxJson(tree, nxJson);
+
+      upsertTargetDefault(tree, { target: 'test', cache: true });
+
+      expect(readNxJson(tree).targetDefaults).toEqual({
+        build: { cache: true },
+        test: { cache: true },
+      });
+    });
+
+    it('upgrades a legacy record to array when a filter is requested', () => {
+      const nxJson = readNxJson(tree);
+      (nxJson as any).targetDefaults = {
+        build: { cache: true },
+      };
+      updateNxJson(tree, nxJson);
+
+      upsertTargetDefault(tree, {
+        target: 'test',
+        projects: 'tag:dotnet',
+        inputs: ['x'],
+      });
+
+      expect(readNxJson(tree).targetDefaults).toEqual([
+        { target: 'build', cache: true },
+        { target: 'test', projects: 'tag:dotnet', inputs: ['x'] },
+      ]);
+    });
+  });
+
+  describe('addBuildTargetDefaults', () => {
+    let tree: Tree;
+    beforeEach(() => {
+      tree = createTreeWithEmptyWorkspace();
+    });
+
+    it('adds entry to legacy record shape preserving record', () => {
+      const nxJson = readNxJson(tree);
+      (nxJson as any).targetDefaults = {};
+      updateNxJson(tree, nxJson);
+
+      addBuildTargetDefaults(tree, '@nx/vite:build');
+
+      expect(readNxJson(tree).targetDefaults).toEqual({
+        '@nx/vite:build': {
+          cache: true,
+          dependsOn: ['^build'],
+          inputs: ['default', '^default'],
+        },
+      });
+    });
+
+    it('appends to array shape and is idempotent', () => {
+      const nxJson = readNxJson(tree);
+      nxJson.targetDefaults = [{ target: 'test', cache: true }];
+      updateNxJson(tree, nxJson);
+
+      addBuildTargetDefaults(tree, '@nx/vite:build');
+      addBuildTargetDefaults(tree, '@nx/vite:build');
+
+      const td = readNxJson(tree).targetDefaults;
+      expect(Array.isArray(td)).toBe(true);
+      expect(td as any).toEqual([
+        { target: 'test', cache: true },
+        {
+          target: '@nx/vite:build',
+          cache: true,
+          dependsOn: ['^build'],
+          inputs: ['default', '^default'],
+        },
+      ]);
+    });
+  });
+
   describe('addE2eCiTargetDefaults', () => {
     let tree: Tree;
     let tempFs: TempFs;

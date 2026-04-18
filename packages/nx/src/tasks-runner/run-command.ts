@@ -1233,11 +1233,20 @@ export function getRunnerOptions(
   nxArgs: NxArgs,
   isCloudDefault: boolean
 ): any {
-  const defaultCacheableOperations = [];
+  const defaultCacheableOperations: string[] = [];
 
-  for (const key in nxJson.targetDefaults) {
-    if (nxJson.targetDefaults[key].cache) {
-      defaultCacheableOperations.push(key);
+  const td = nxJson.targetDefaults;
+  if (Array.isArray(td)) {
+    for (const entry of td) {
+      if (entry?.cache && entry.target) {
+        defaultCacheableOperations.push(entry.target);
+      }
+    }
+  } else if (td) {
+    for (const key in td) {
+      if (td[key].cache) {
+        defaultCacheableOperations.push(key);
+      }
     }
   }
 

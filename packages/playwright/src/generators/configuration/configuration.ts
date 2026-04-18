@@ -6,11 +6,13 @@ import {
   getPackageManagerCommand,
   joinPathFragments,
   logger,
+  type NxJsonConfiguration,
   offsetFromRoot,
   output,
   readNxJson,
   readProjectConfiguration,
   runTasksInSerial,
+  type TargetConfiguration,
   toJS,
   Tree,
   updateJson,
@@ -19,6 +21,7 @@ import {
   workspaceRoot,
   writeJson,
 } from '@nx/devkit';
+import { upsertTargetDefault } from '@nx/devkit/src/generators/target-defaults-utils';
 import { resolveImportPath } from '@nx/devkit/src/generators/project-name-and-root-utils';
 import { promptWhenInteractive } from '@nx/devkit/src/generators/prompt';
 import { getRelativePathToRootTsConfig } from '@nx/js';
@@ -357,17 +360,35 @@ function setupE2ETargetDefaults(tree: Tree) {
   }
 
   // E2e targets depend on all their project's sources + production sources of dependencies
-  nxJson.targetDefaults ??= {};
-
   const productionFileSet = !!nxJson.namedInputs?.production;
-  nxJson.targetDefaults.e2e ??= {};
-  nxJson.targetDefaults.e2e.cache ??= true;
-  nxJson.targetDefaults.e2e.inputs ??= [
-    'default',
-    productionFileSet ? '^production' : '^default',
-  ];
+  const patch: Partial<TargetConfiguration> = {};
+  if (!findExistingE2eDefault(nxJson.targetDefaults)?.cache) {
+    patch.cache = true;
+  }
+  if (!findExistingE2eDefault(nxJson.targetDefaults)?.inputs) {
+    patch.inputs = [
+      'default',
+      productionFileSet ? '^production' : '^default',
+    ];
+  }
+  if (Object.keys(patch).length > 0) {
+    upsertTargetDefault(tree, { target: 'e2e', ...patch });
+  }
+}
 
-  updateNxJson(tree, nxJson);
+function findExistingE2eDefault(
+  td: NxJsonConfiguration['targetDefaults']
+): Partial<TargetConfiguration> | undefined {
+  if (!td) return undefined;
+  if (Array.isArray(td)) {
+    return td.find(
+      (e) =>
+        e.target === 'e2e' &&
+        e.projects === undefined &&
+        e.source === undefined
+    );
+  }
+  return td['e2e'];
 }
 
 function addE2eTarget(tree: Tree, options: ConfigurationGeneratorSchema) {

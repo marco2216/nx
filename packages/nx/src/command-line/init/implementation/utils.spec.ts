@@ -56,12 +56,13 @@ describe('utils', () => {
         },
         nx: {
           $schema: './node_modules/nx/schemas/nx-schema.json',
-          targetDefaults: {
-            build: {
+          targetDefaults: [
+            {
+              target: 'build',
               dependsOn: ['^build'],
               cache: true,
             },
-          },
+          ],
         },
       },
       {
@@ -75,12 +76,13 @@ describe('utils', () => {
         },
         nx: {
           $schema: './node_modules/nx/schemas/nx-schema.json',
-          targetDefaults: {
-            build: {
+          targetDefaults: [
+            {
+              target: 'build',
               outputs: ['{projectRoot}/dist/**', '{projectRoot}/.next/**'],
               cache: true,
             },
-          },
+          ],
         },
       },
       {
@@ -94,15 +96,16 @@ describe('utils', () => {
         },
         nx: {
           $schema: './node_modules/nx/schemas/nx-schema.json',
-          targetDefaults: {
-            build: {
+          targetDefaults: [
+            {
+              target: 'build',
               inputs: [
                 '{projectRoot}/src/**/*.tsx',
                 '{projectRoot}/test/**/*.tsx',
               ],
               cache: true,
             },
-          },
+          ],
         },
       },
       {
@@ -119,14 +122,10 @@ describe('utils', () => {
         },
         nx: {
           $schema: './node_modules/nx/schemas/nx-schema.json',
-          targetDefaults: {
-            build: {
-              cache: true,
-            },
-            dev: {
-              cache: false,
-            },
-          },
+          targetDefaults: [
+            { target: 'build', cache: true },
+            { target: 'dev', cache: false },
+          ],
         },
       },
       {
@@ -154,12 +153,13 @@ describe('utils', () => {
         },
         nx: {
           $schema: './node_modules/nx/schemas/nx-schema.json',
-          targetDefaults: {
-            build: {
+          targetDefaults: [
+            {
+              target: 'build',
               dependsOn: ['^build'],
               cache: true,
             },
-          },
+          ],
         },
       },
       {
@@ -195,22 +195,22 @@ describe('utils', () => {
             default: ['{projectRoot}/**/*', 'sharedGlobals'],
           },
           cacheDirectory: '.nx/cache',
-          targetDefaults: {
-            build: {
+          targetDefaults: [
+            {
+              target: 'build',
               dependsOn: ['^build'],
               outputs: ['{projectRoot}/dist/**'],
               inputs: ['{projectRoot}/src/**/*'],
               cache: true,
             },
-            test: {
+            {
+              target: 'test',
               dependsOn: ['build'],
               outputs: ['{projectRoot}/coverage/**'],
               cache: true,
             },
-            dev: {
-              cache: false,
-            },
-          },
+            { target: 'dev', cache: false },
+          ],
         },
       },
       {
@@ -238,8 +238,9 @@ describe('utils', () => {
         },
         nx: {
           $schema: './node_modules/nx/schemas/nx-schema.json',
-          targetDefaults: {
-            build: {
+          targetDefaults: [
+            {
+              target: 'build',
               dependsOn: ['^build'],
               inputs: ['{projectRoot}/**/*', '{projectRoot}/.env*'],
               outputs: [
@@ -248,18 +249,18 @@ describe('utils', () => {
               ],
               cache: true,
             },
-            lint: {
+            {
+              target: 'lint',
               dependsOn: ['^lint'],
               cache: true,
             },
-            'check-types': {
+            {
+              target: 'check-types',
               dependsOn: ['^check-types'],
               cache: true,
             },
-            dev: {
-              cache: false,
-            },
-          },
+            { target: 'dev', cache: false },
+          ],
         },
       },
     ])('$description', ({ turbo, nx }) => {
