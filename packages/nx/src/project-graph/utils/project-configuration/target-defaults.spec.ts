@@ -1,10 +1,22 @@
 import type { ProjectGraphProjectNode } from '../../../config/project-graph';
 import type { TargetDefaultEntry } from '../../../config/nx-json';
+import { output } from '../../../utils/output';
 import {
+  __resetTargetDefaultsLegacyWarning,
   findBestTargetDefault,
   normalizeTargetDefaults,
   readTargetDefaultsForTarget,
 } from './target-defaults';
+
+// Silence the legacy record-shape warning everywhere except in the
+// dedicated describe that asserts on it. Installed per test so Jest's
+// `resetMocks` does not clear the stub between tests, and cleared
+// between tests so call counts don't leak.
+beforeEach(() => {
+  __resetTargetDefaultsLegacyWarning();
+  const spy = jest.spyOn(output, 'warn').mockImplementation(() => {});
+  spy.mockClear();
+});
 
 function node(
   name: string,
@@ -348,7 +360,7 @@ describe('findBestTargetDefault', () => {
 
     it('skips entry when target has a command but no matching executor', () => {
       const entries: TargetDefaultEntry[] = [
-        { target: 'build', executor: '@nx/js:tsc', inputs: ['x' ] },
+        { target: 'build', executor: '@nx/js:tsc', inputs: ['x'] },
       ];
       expect(
         findBestTargetDefault(
@@ -420,6 +432,30 @@ describe('normalizeTargetDefaults', () => {
       { target: 'e2e-ci--*', cache: false },
       { target: '@nx/vite:test', inputs: ['x'] },
     ]);
+  });
+
+  describe('legacy record-shape warning', () => {
+    it('warns once when record shape is normalized, mentioning nx repair', () => {
+      const warnSpy = output.warn as jest.Mock;
+      normalizeTargetDefaults({ build: { cache: true } });
+      normalizeTargetDefaults({ test: { cache: true } });
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const call = warnSpy.mock.calls[0][0];
+      expect(call.title).toMatch(/legacy record-shape/i);
+      expect(call.bodyLines.join(' ')).toMatch(/nx repair/);
+    });
+
+    it('does not warn for array shape', () => {
+      const warnSpy = output.warn as jest.Mock;
+      normalizeTargetDefaults([{ target: 'build', cache: true }]);
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it('does not warn when targetDefaults is undefined', () => {
+      const warnSpy = output.warn as jest.Mock;
+      normalizeTargetDefaults(undefined);
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
   });
 });
 

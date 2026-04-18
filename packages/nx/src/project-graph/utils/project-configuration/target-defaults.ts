@@ -26,6 +26,7 @@ import {
   resolveCommandSyntacticSugar,
 } from './target-merging';
 import { uniqueKeysInObjects } from './utils';
+import { output } from '../../../utils/output';
 
 type CreateNodesResultEntry = readonly [
   plugin: string,
@@ -412,6 +413,8 @@ function stripFilterKeys(
   return rest;
 }
 
+let hasWarnedAboutLegacyRecordShape = false;
+
 /**
  * Accept either the new array shape or the legacy record shape and return
  * a normalized array. Record entries become `{ target: key, ...value }`
@@ -419,18 +422,40 @@ function stripFilterKeys(
  * `nx:run-commands`) keep `target: key` — the matcher compares `target`
  * against both target names and executors, so executor semantics are
  * preserved.
+ *
+ * When the record shape is encountered we log a one-time warning
+ * recommending `nx repair`, which will re-run the migration that
+ * converts `targetDefaults` to the array shape.
  */
 export function normalizeTargetDefaults(
   raw: TargetDefaults | undefined
 ): NormalizedTargetDefaults {
   if (!raw) return [];
   if (Array.isArray(raw)) return raw;
+  warnAboutLegacyRecordShapeOnce();
   const out: TargetDefaultEntry[] = [];
   for (const key of Object.keys(raw)) {
     const value = (raw as TargetDefaultsRecord)[key] ?? {};
     out.push({ ...value, target: key });
   }
   return out;
+}
+
+function warnAboutLegacyRecordShapeOnce() {
+  if (hasWarnedAboutLegacyRecordShape) return;
+  hasWarnedAboutLegacyRecordShape = true;
+  output.warn({
+    title: 'nx.json uses the legacy record-shape `targetDefaults`',
+    bodyLines: [
+      'The object/record form of `targetDefaults` is deprecated. Nx still reads it for now, but the array form is required to use the new `projects` and `source` filters.',
+      'Run `nx repair` to automatically convert `targetDefaults` to the array shape.',
+    ],
+  });
+}
+
+/** Test-only: resets the module-level "warned once" flag. */
+export function __resetTargetDefaultsLegacyWarning() {
+  hasWarnedAboutLegacyRecordShape = false;
 }
 
 function resolveSourcePlugin(
