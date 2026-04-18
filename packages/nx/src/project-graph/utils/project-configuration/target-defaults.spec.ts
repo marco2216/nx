@@ -276,6 +276,127 @@ describe('findBestTargetDefault', () => {
       )
     ).toBeNull();
   });
+
+  describe('executor body field (dual-role)', () => {
+    it('matches and bumps tier when body executor equals target executor', () => {
+      const entries: TargetDefaultEntry[] = [
+        { target: 'build', inputs: ['target-only'] },
+        { target: 'build', executor: '@nx/js:tsc', inputs: ['executor-match'] },
+      ];
+      expect(
+        findBestTargetDefault(
+          'build',
+          '@nx/js:tsc',
+          undefined,
+          undefined,
+          undefined,
+          entries
+        )
+      ).toEqual({ executor: '@nx/js:tsc', inputs: ['executor-match'] });
+    });
+
+    it('matches as injection (no tier bump) when target has no executor and no command', () => {
+      const entries: TargetDefaultEntry[] = [
+        { target: 'build', executor: '@nx/js:tsc', inputs: ['inject'] },
+      ];
+      expect(
+        findBestTargetDefault(
+          'build',
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          entries,
+          undefined
+        )
+      ).toEqual({ executor: '@nx/js:tsc', inputs: ['inject'] });
+    });
+
+    it('ties injection match with pure target-only; later index wins', () => {
+      const entries: TargetDefaultEntry[] = [
+        { target: 'build', inputs: ['plain'] },
+        { target: 'build', executor: '@nx/js:tsc', inputs: ['inject'] },
+      ];
+      expect(
+        findBestTargetDefault(
+          'build',
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          entries,
+          undefined
+        )
+      ).toEqual({ executor: '@nx/js:tsc', inputs: ['inject'] });
+    });
+
+    it('skips entry when target has a different executor', () => {
+      const entries: TargetDefaultEntry[] = [
+        { target: 'build', executor: '@nx/js:tsc', inputs: ['x'] },
+      ];
+      expect(
+        findBestTargetDefault(
+          'build',
+          '@nx/esbuild:esbuild',
+          undefined,
+          undefined,
+          undefined,
+          entries
+        )
+      ).toBeNull();
+    });
+
+    it('skips entry when target has a command but no matching executor', () => {
+      const entries: TargetDefaultEntry[] = [
+        { target: 'build', executor: '@nx/js:tsc', inputs: ['x' ] },
+      ];
+      expect(
+        findBestTargetDefault(
+          'build',
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          entries,
+          'some command'
+        )
+      ).toBeNull();
+    });
+
+    it('executor filter match beats target-only entry in tier', () => {
+      const entries: TargetDefaultEntry[] = [
+        { target: 'build', inputs: ['plain'] },
+        { target: 'build', executor: '@nx/js:tsc', inputs: ['filter'] },
+      ];
+      expect(
+        findBestTargetDefault(
+          'build',
+          '@nx/js:tsc',
+          undefined,
+          undefined,
+          undefined,
+          entries
+        )
+      ).toEqual({ executor: '@nx/js:tsc', inputs: ['filter'] });
+    });
+
+    it('target+source still beats target+executor-match', () => {
+      const entries: TargetDefaultEntry[] = [
+        { target: 'build', executor: '@nx/js:tsc', inputs: ['executor-match'] },
+        { target: 'build', source: '@nx/js', inputs: ['source-match'] },
+      ];
+      expect(
+        findBestTargetDefault(
+          'build',
+          '@nx/js:tsc',
+          'lib',
+          node('lib'),
+          '@nx/js',
+          entries
+        )
+      ).toEqual({ inputs: ['source-match'] });
+    });
+  });
 });
 
 describe('normalizeTargetDefaults', () => {

@@ -149,6 +149,7 @@ function buildSyntheticTargetForRoot(
     return readAndPrepareTargetDefaults(
       targetName,
       resolvedSpecified.executor,
+      resolvedSpecified.command,
       root,
       entries,
       projectName,
@@ -162,6 +163,7 @@ function buildSyntheticTargetForRoot(
     return readAndPrepareTargetDefaults(
       targetName,
       resolvedDefault.executor,
+      resolvedDefault.command,
       root,
       entries,
       projectName,
@@ -177,6 +179,7 @@ function buildSyntheticTargetForRoot(
     return readAndPrepareTargetDefaults(
       targetName,
       resolvedDefault.executor || resolvedSpecified.executor,
+      resolvedDefault.command || resolvedSpecified.command,
       root,
       entries,
       projectName,
@@ -190,6 +193,7 @@ function buildSyntheticTargetForRoot(
   const targetDefaults = readAndPrepareTargetDefaults(
     targetName,
     resolvedDefault.executor,
+    resolvedDefault.command,
     root,
     entries,
     projectName,
@@ -211,6 +215,7 @@ function buildSyntheticTargetForRoot(
 function readAndPrepareTargetDefaults(
   targetName: string,
   executor: string | undefined,
+  command: string | undefined,
   root: string,
   entries: NormalizedTargetDefaults,
   projectName: string | undefined,
@@ -223,7 +228,8 @@ function readAndPrepareTargetDefaults(
     projectName,
     projectNode,
     sourcePlugin,
-    entries
+    entries,
+    command
   );
   if (!rawTargetDefaults) return undefined;
 
@@ -246,6 +252,7 @@ export function readTargetDefaultsForTarget(
     projectName?: string;
     projectNode?: ProjectGraphProjectNode;
     sourcePlugin?: string;
+    command?: string;
   }
 ): Partial<TargetConfiguration> | null {
   if (!targetDefaults) return null;
@@ -256,7 +263,8 @@ export function readTargetDefaultsForTarget(
     opts?.projectName,
     opts?.projectNode,
     opts?.sourcePlugin,
-    entries
+    entries,
+    opts?.command
   );
 }
 
@@ -264,7 +272,7 @@ type MatchKind = 'executor' | 'exactTarget' | 'globTarget';
 
 interface Candidate {
   config: Partial<TargetConfiguration>;
-  tier: number; // 1..4
+  tier: number; // 1..5
   matchKind: MatchKind;
   index: number;
 }
@@ -276,10 +284,16 @@ interface Candidate {
  * `projects`, `source`) stripped.
  *
  * Specificity tiers (highest wins):
- *   4: target + projects + source
- *   3: target + projects
- *   2: target + source
- *   1: target (or executor) only
+ *   5: target + projects + source
+ *   4: target + projects
+ *   3: target + source
+ *   2: target + executor (body-field) match
+ *   1: target (or target + executor injection-only match) alone
+ *
+ * `executor` in a defaults body acts dually: when the target already
+ * has an executor it is treated as a filter (matching bumps tier 1 → 2,
+ * mismatch drops the entry); when the target has no executor and no
+ * command, it still matches as an injector but does not bump the tier.
  *
  * Exact target / executor match beats glob target match within a tier.
  */
@@ -289,7 +303,8 @@ export function findBestTargetDefault(
   projectName: string | undefined,
   projectNode: ProjectGraphProjectNode | undefined,
   sourcePlugin: string | undefined,
-  entries: NormalizedTargetDefaults
+  entries: NormalizedTargetDefaults,
+  targetCommand?: string | undefined
 ): Partial<TargetConfiguration> | null {
   if (!entries?.length) return null;
 
@@ -315,10 +330,18 @@ export function findBestTargetDefault(
       if (!matched.includes(projectName)) continue;
     }
 
+    const executorMatch = matchExecutorBody(
+      entry.executor,
+      executor,
+      targetCommand
+    );
+    if (executorMatch === 'no-match') continue;
+
     let tier = 1;
-    if (entry.projects !== undefined && entry.source !== undefined) tier = 4;
-    else if (entry.projects !== undefined) tier = 3;
-    else if (entry.source !== undefined) tier = 2;
+    if (entry.projects !== undefined && entry.source !== undefined) tier = 5;
+    else if (entry.projects !== undefined) tier = 4;
+    else if (entry.source !== undefined) tier = 3;
+    else if (executorMatch === 'filter') tier = 2;
 
     const candidate: Candidate = {
       config: stripFilterKeys(entry),
@@ -333,6 +356,25 @@ export function findBestTargetDefault(
   }
 
   return best ? best.config : null;
+}
+
+/**
+ * Dual-role check for a defaults entry's `executor` body field.
+ *
+ * - `entry.executor` absent: not applicable, treated as neutral.
+ * - `entry.executor` matches target executor: filter match (specificity++).
+ * - target has no executor and no command: injection match (no bump).
+ * - target has a different executor or an unrelated command: skip.
+ */
+function matchExecutorBody(
+  entryExecutor: string | undefined,
+  targetExecutor: string | undefined,
+  targetCommand: string | undefined
+): 'neutral' | 'filter' | 'inject' | 'no-match' {
+  if (!entryExecutor) return 'neutral';
+  if (targetExecutor && targetExecutor === entryExecutor) return 'filter';
+  if (!targetExecutor && !targetCommand) return 'inject';
+  return 'no-match';
 }
 
 function beats(a: Candidate, b: Candidate): boolean {
