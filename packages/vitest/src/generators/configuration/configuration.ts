@@ -250,10 +250,7 @@ getTestBed().initTestEnvironment(
     const testTarget = schema.testTarget ?? 'test';
     const existing = findTestDefault(nxJson?.targetDefaults, testTarget);
     const dependsOn = Array.from(
-      new Set([
-        ...((existing?.dependsOn as (string | unknown)[] | undefined) ?? []),
-        '^build',
-      ])
+      new Set([...(existing?.dependsOn ?? []), '^build'])
     );
     upsertTargetDefault(tree, { target: testTarget, dependsOn });
   }
