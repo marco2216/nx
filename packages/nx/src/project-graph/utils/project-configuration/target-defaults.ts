@@ -26,7 +26,8 @@ import {
   resolveCommandSyntacticSugar,
 } from './target-merging';
 import { uniqueKeysInObjects } from './utils';
-import { output } from '../../../utils/output';
+import { EOL } from 'os';
+import * as pc from 'picocolors';
 
 type CreateNodesResultEntry = readonly [
   plugin: string,
@@ -444,13 +445,20 @@ export function normalizeTargetDefaults(
 function warnAboutLegacyRecordShapeOnce() {
   if (hasWarnedAboutLegacyRecordShape) return;
   hasWarnedAboutLegacyRecordShape = true;
-  output.warn({
-    title: 'nx.json uses the legacy record-shape `targetDefaults`',
-    bodyLines: [
-      'The object/record form of `targetDefaults` is deprecated. Nx still reads it for now, but the array form is required to use the new `projects` and `source` filters.',
-      'Run `nx repair` to automatically convert `targetDefaults` to the array shape.',
-    ],
-  });
+  // Written to stderr (not stdout) so commands with structured stdout —
+  // e.g. `nx show project --json` — remain parseable.
+  const title = pc.yellow(
+    'NX  nx.json uses the legacy record-shape `targetDefaults`'
+  );
+  const bodyLines = [
+    'The object/record form of `targetDefaults` is deprecated. Nx still reads it for now, but the array form is required to use the new `projects` and `source` filters.',
+    'Run `nx repair` to automatically convert `targetDefaults` to the array shape.',
+  ];
+  process.stderr.write(
+    `${EOL}${title}${EOL}${EOL}${bodyLines
+      .map((l) => `  ${l}`)
+      .join(EOL)}${EOL}${EOL}`
+  );
 }
 
 /** Test-only: resets the module-level "warned once" flag. */

@@ -1,6 +1,5 @@
 import type { ProjectGraphProjectNode } from '../../../config/project-graph';
 import type { TargetDefaultEntry } from '../../../config/nx-json';
-import { output } from '../../../utils/output';
 import {
   __resetTargetDefaultsLegacyWarning,
   findBestTargetDefault,
@@ -9,13 +8,19 @@ import {
 } from './target-defaults';
 
 // Silence the legacy record-shape warning everywhere except in the
-// dedicated describe that asserts on it. Installed per test so Jest's
-// `resetMocks` does not clear the stub between tests, and cleared
-// between tests so call counts don't leak.
+// dedicated describe that asserts on it. The warning writes to stderr
+// directly (so it cannot pollute `--json` stdout), so we stub
+// `process.stderr.write` rather than any output helper. Restored per
+// test so call history doesn't leak between `it` blocks.
+let stderrWriteSpy: jest.SpyInstance;
 beforeEach(() => {
   __resetTargetDefaultsLegacyWarning();
-  const spy = jest.spyOn(output, 'warn').mockImplementation(() => {});
-  spy.mockClear();
+  stderrWriteSpy = jest
+    .spyOn(process.stderr, 'write')
+    .mockImplementation(() => true);
+});
+afterEach(() => {
+  stderrWriteSpy.mockRestore();
 });
 
 function node(
@@ -435,26 +440,32 @@ describe('normalizeTargetDefaults', () => {
   });
 
   describe('legacy record-shape warning', () => {
-    it('warns once when record shape is normalized, mentioning nx repair', () => {
-      const warnSpy = output.warn as jest.Mock;
+    it('warns once to stderr when record shape is normalized, mentioning nx repair', () => {
       normalizeTargetDefaults({ build: { cache: true } });
       normalizeTargetDefaults({ test: { cache: true } });
-      expect(warnSpy).toHaveBeenCalledTimes(1);
-      const call = warnSpy.mock.calls[0][0];
-      expect(call.title).toMatch(/legacy record-shape/i);
-      expect(call.bodyLines.join(' ')).toMatch(/nx repair/);
+      expect(stderrWriteSpy).toHaveBeenCalledTimes(1);
+      const message = stderrWriteSpy.mock.calls[0][0] as string;
+      expect(message).toMatch(/legacy record-shape/i);
+      expect(message).toMatch(/nx repair/);
+    });
+
+    it('never writes the warning to stdout', () => {
+      const stdoutSpy = jest
+        .spyOn(process.stdout, 'write')
+        .mockImplementation(() => true);
+      normalizeTargetDefaults({ build: { cache: true } });
+      expect(stdoutSpy).not.toHaveBeenCalled();
+      stdoutSpy.mockRestore();
     });
 
     it('does not warn for array shape', () => {
-      const warnSpy = output.warn as jest.Mock;
       normalizeTargetDefaults([{ target: 'build', cache: true }]);
-      expect(warnSpy).not.toHaveBeenCalled();
+      expect(stderrWriteSpy).not.toHaveBeenCalled();
     });
 
     it('does not warn when targetDefaults is undefined', () => {
-      const warnSpy = output.warn as jest.Mock;
       normalizeTargetDefaults(undefined);
-      expect(warnSpy).not.toHaveBeenCalled();
+      expect(stderrWriteSpy).not.toHaveBeenCalled();
     });
   });
 });
