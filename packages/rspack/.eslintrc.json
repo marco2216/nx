@@ -55,7 +55,9 @@
               "webpack",
               "sass-embedded",
               "sass",
-              "ts-checker-rspack-plugin"
+              "ts-checker-rspack-plugin",
+              // Used in deprecated-less-loader.js wrapper
+              "less-loader"
             ]
           }
         ]
