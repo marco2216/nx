@@ -89,6 +89,7 @@
     "@nx/conformance": "4.0.0",
     "@nx/cypress": "22.7.0-rc.1",
     "@nx/devkit": "22.7.0-rc.1",
+    "@nx/dotnet": "22.7.0-rc.1",
     "@nx/esbuild": "22.7.0-rc.1",
     "@nx/eslint": "22.7.0-rc.1",
     "@nx/eslint-plugin": "22.7.0-rc.1",
