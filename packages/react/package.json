@@ -52,6 +52,7 @@
     "@nx/cypress": "workspace:*",
     "@nx/playwright": "workspace:*",
     "@nx/rsbuild": "workspace:*",
+    "@nx/rspack": "workspace:*",
     "@nx/vite": "workspace:*",
     "@nx/vitest": "workspace:*",
     "@nx/webpack": "workspace:*",
@@ -60,14 +61,6 @@
   },
   "optionalDependencies": {
     "@nx/vite": "workspace:*"
-  },
-  "peerDependencies": {
-    "@nx/rspack": "workspace:*"
-  },
-  "peerDependenciesMeta": {
-    "@nx/rspack": {
-      "optional": true
-    }
   },
   "publishConfig": {
     "access": "public"
