@@ -1,3 +1,4 @@
+import { Socket } from 'net';
 import { performance } from 'perf_hooks';
 import { readNxJson } from '../../config/nx-json';
 import {
@@ -23,7 +24,11 @@ import {
   writeCache,
   writeCacheIfStale,
 } from '../../project-graph/nx-deps-cache';
-import { getPlugins } from '../../project-graph/plugins/get-plugins';
+import {
+  getPlugins,
+  getPluginsSeparated,
+  SeparatedPlugins,
+} from '../../project-graph/plugins/get-plugins';
 import type { LoadedNxPlugin } from '../../project-graph/plugins/loaded-nx-plugin';
 import { ConfigurationResult } from '../../project-graph/utils/project-configuration-utils';
 import { ConfigurationSourceMaps } from '../../project-graph/utils/project-configuration/source-maps';
@@ -38,6 +43,11 @@ import {
 } from '../../utils/workspace-context';
 import { workspaceRoot } from '../../utils/workspace-root';
 import { serverLogger } from '../logger';
+import { ProgressTopics } from '../../utils/progress-topics';
+import {
+  subscribeClientToTopic,
+  unsubscribeClientFromTopic,
+} from './client-socket-context';
 import { notifyFileChangeListeners } from './file-watching/file-change-events';
 import { notifyFileWatcherSockets } from './file-watching/file-watcher-sockets';
 import { notifyProjectGraphListenerSockets } from './project-graph-listener-sockets';
@@ -46,8 +56,6 @@ interface SerializedProjectGraph {
   error: Error | null;
   projectGraph: ProjectGraph | null;
   projectFileMapCache: FileMapCache | null;
-  fileMap: FileMap | null;
-  allWorkspaceFiles: FileData[] | null;
   serializedProjectGraph: string | null;
   serializedSourceMaps: string | null;
   sourceMaps: ConfigurationSourceMaps | null;
@@ -58,7 +66,6 @@ let cachedSerializedProjectGraphPromise: Promise<SerializedProjectGraph>;
 export let fileMapWithFiles:
   | {
       fileMap: FileMap;
-      allWorkspaceFiles: FileData[];
       rustReferences: NxWorkspaceFilesExternals;
     }
   | undefined;
@@ -84,7 +91,16 @@ let knownExternalNodes: Record<string, ProjectGraphExternalNode> = {};
 let fileChangeCounter = 0;
 let recomputationGeneration = 0;
 
-export async function getCachedSerializedProjectGraphPromise(): Promise<SerializedProjectGraph> {
+export async function getCachedSerializedProjectGraphPromise(
+  socket?: Socket
+): Promise<SerializedProjectGraph> {
+  // Subscribe the requesting client to the graph-construction topic
+  // for the duration of the await, so in-flight progress/log messages
+  // — including those produced by a recomputation that was already
+  // started before this caller arrived — are broadcast to them.
+  if (socket) {
+    subscribeClientToTopic(socket, ProgressTopics.GraphConstruction);
+  }
   try {
     let wasScheduled = false;
     // recomputing it now on demand. we can ignore the scheduled timeout
@@ -97,12 +113,12 @@ export async function getCachedSerializedProjectGraphPromise(): Promise<Serializ
     // reset the wait time
     waitPeriod = 100;
     await resetInternalStateIfNxDepsMissing();
-    const plugins = await getPlugins();
+    const separatedPlugins = await getPluginsSeparated();
     const previousPromise = cachedSerializedProjectGraphPromise;
     if (collectedUpdatedFiles.size == 0 && collectedDeletedFiles.size == 0) {
       if (!cachedSerializedProjectGraphPromise) {
         cachedSerializedProjectGraphPromise =
-          processFilesAndCreateAndSerializeProjectGraph(plugins);
+          processFilesAndCreateAndSerializeProjectGraph(separatedPlugins);
         serverLogger.log(
           'No files changed, but no in-memory cached project graph found. Recomputing it...'
         );
@@ -116,7 +132,7 @@ export async function getCachedSerializedProjectGraphPromise(): Promise<Serializ
         `Recomputing project graph because of ${collectedUpdatedFiles.size} updated and ${collectedDeletedFiles.size} deleted files.`
       );
       cachedSerializedProjectGraphPromise =
-        processFilesAndCreateAndSerializeProjectGraph(plugins);
+        processFilesAndCreateAndSerializeProjectGraph(separatedPlugins);
     }
     const graphWasRecomputed =
       cachedSerializedProjectGraphPromise !== previousPromise;
@@ -176,10 +192,12 @@ export async function getCachedSerializedProjectGraphPromise(): Promise<Serializ
       sourceMaps: null,
       projectGraph: null,
       projectFileMapCache: null,
-      fileMap: null,
-      allWorkspaceFiles: null,
       rustReferences: null,
     };
+  } finally {
+    if (socket) {
+      unsubscribeClientFromTopic(socket, ProgressTopics.GraphConstruction);
+    }
   }
 }
 
@@ -224,7 +242,9 @@ export function addUpdatedAndDeletedFiles(
       }
 
       cachedSerializedProjectGraphPromise =
-        processFilesAndCreateAndSerializeProjectGraph(await getPlugins());
+        processFilesAndCreateAndSerializeProjectGraph(
+          await getPluginsSeparated()
+        );
       const { projectGraph, sourceMaps, error } =
         await cachedSerializedProjectGraphPromise;
 
@@ -320,8 +340,12 @@ export function invalidateGraphCache() {
 }
 
 async function processFilesAndCreateAndSerializeProjectGraph(
-  plugins: LoadedNxPlugin[]
+  separatedPlugins: SeparatedPlugins
 ): Promise<SerializedProjectGraph> {
+  const plugins = [
+    ...separatedPlugins.specifiedPlugins,
+    ...separatedPlugins.defaultPlugins,
+  ];
   const myGeneration = ++recomputationGeneration;
 
   // Helper to check if this recomputation is stale (a newer one has started)
@@ -357,7 +381,7 @@ async function processFilesAndCreateAndSerializeProjectGraph(
 
     try {
       projectConfigurationsResult = await retrieveProjectConfigurations(
-        plugins,
+        separatedPlugins,
         workspaceRoot,
         nxJson
       );
@@ -415,9 +439,7 @@ async function processFilesAndCreateAndSerializeProjectGraph(
           error: g.error,
           projectGraph: null,
           projectFileMapCache: null,
-          fileMap: null,
           rustReferences: null,
-          allWorkspaceFiles: null,
           serializedProjectGraph: null,
           serializedSourceMaps: null,
           sourceMaps: null,
@@ -433,9 +455,7 @@ async function processFilesAndCreateAndSerializeProjectGraph(
         ),
         projectGraph: null,
         projectFileMapCache: null,
-        fileMap: null,
         rustReferences: null,
-        allWorkspaceFiles: null,
         serializedProjectGraph: null,
         serializedSourceMaps: null,
         sourceMaps: null,
@@ -448,9 +468,7 @@ async function processFilesAndCreateAndSerializeProjectGraph(
       error: err,
       projectGraph: null,
       projectFileMapCache: null,
-      fileMap: null,
       rustReferences: null,
-      allWorkspaceFiles: null,
       serializedProjectGraph: null,
       serializedSourceMaps: null,
       sourceMaps: null,
@@ -480,14 +498,12 @@ async function createAndSerializeProjectGraph({
   try {
     performance.mark('create-project-graph-start');
     const fileMap = copyFileMap(fileMapWithFiles.fileMap);
-    const allWorkspaceFiles = copyFileData(fileMapWithFiles.allWorkspaceFiles);
     const rustReferences = fileMapWithFiles.rustReferences;
     const { projectGraph, projectFileMapCache } =
       await buildProjectGraphUsingFileMap(
         projects,
         knownExternalNodes,
         fileMap,
-        allWorkspaceFiles,
         rustReferences,
         currentProjectFileMapCache || readFileMapCache(),
         await getPlugins(),
@@ -519,8 +535,6 @@ async function createAndSerializeProjectGraph({
       error: null,
       projectGraph,
       projectFileMapCache,
-      fileMap,
-      allWorkspaceFiles,
       serializedProjectGraph,
       serializedSourceMaps,
       sourceMaps,
@@ -534,8 +548,6 @@ async function createAndSerializeProjectGraph({
       error: e,
       projectGraph: null,
       projectFileMapCache: null,
-      fileMap: null,
-      allWorkspaceFiles: null,
       serializedProjectGraph: null,
       serializedSourceMaps: null,
       sourceMaps: null,
