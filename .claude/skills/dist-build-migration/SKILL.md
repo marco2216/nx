@@ -44,10 +44,19 @@ Look at the package's root `.ts` files and any existing `exports` field. Common 
 - `index.ts` (main)
 - `testing.ts`
 - `internal.ts`
+- `internal-testing-utils.ts`
 - `ngcli-adapter.ts`
 - Any other `.ts` files at the package root that re-export from `src/`
 
 Also check for `migrations.json` and `generators.json`/`executors.json` — these need exports entries too.
+
+**You'll likely need to create or expand `internal.ts`.** Before writing the exports map, run:
+
+```bash
+grep -rn "from '@nx/<name>/src/" --include="*.ts" .
+```
+
+Each unique re-export target found here either needs to live behind an existing public entry point or needs to be added to a new `internal.ts`. Group these into `internal.ts` rather than expanding the main public API surface — `internal.ts` signals "supported within the workspace, not a public guarantee." See `packages/devkit/internal.ts` for the pattern.
 
 ### 3. Update `tsconfig.lib.json`
 
@@ -170,7 +179,7 @@ Add these sections:
 
 Update the existing `build` target's `outputs` if they reference `{workspaceRoot}/dist/packages/<name>` — they should now reference `{projectRoot}/dist/`.
 
-Also update `dependsOn` in the `build` target: replace `"^build"` with `"^build"` if it isn't already, and make sure `"build-base"` is listed.
+Also update the `build` target's `dependsOn`: make sure `"^build"` is listed (so dependent packages build first) and `"build-base"` is listed (so this package's compilation happens before any post-processing like copy-readme).
 
 ### 7. Update `.eslintrc.json`
 
@@ -234,44 +243,99 @@ These are build outputs that shouldn't be committed.
 
 ### 12. Update docs generation paths
 
-Check `astro-docs/src/plugins/utils/` for any code that references `.d.ts` files from the package. The docs generation reads `.d.ts` entry points to build API reference pages. Paths that previously pointed to `dist/packages/<name>/foo.d.ts` (workspace root dist) or `packages/<name>/foo.d.ts` (package root) now need to point to `packages/<name>/dist/foo.d.ts`.
+Two files in `astro-docs/src/plugins/utils/` need updates — both, not just the obvious one:
 
-For example, `devkit-generation.ts` had to be updated to look for `packages/devkit/dist/index.d.ts` instead of `packages/devkit/index.d.ts`.
+**`devkit-generation.ts`** (or the equivalent for your package): updates the entry-point lookup paths. Move `'dist'` from before `'packages', '<name>'` to after, so the path is `packages/<name>/dist/index.d.ts` instead of `dist/packages/<name>/index.d.ts`.
+
+**`typedoc/typedoc.ts`** (devkit-only currently, but check if your package wires up TypeDoc):
+
+- Change `buildDir` away from `join(workspaceRoot, 'dist', 'packages', '<name>')` — for devkit this became `join(tempDir, 'build')`.
+- Update `compilerOptions.paths` to map workspace packages to local dists:
+  ```
+  'nx/*': ['packages/nx/dist/*', 'packages/nx/src/*'],
+  '@nx/*': ['packages/*/dist/*', 'packages/*/src/*'],
+  ```
+- Add the package's `dist/**/*.d.ts` to `tsconfigObj.include` (use absolute paths since the tsconfig is written to a temp dir).
+- Filter `'dist'` out of `tsconfigObj.exclude` so the dist `.d.ts` files aren't excluded.
+
+Without the include + exclude tweak, TypeDoc picks up the source `.ts` but can't see the dist `.d.ts` entry points and produces empty API pages.
 
 ### 13. Update `scripts/nx-release.ts`
 
 If the package has special release handling in `scripts/nx-release.ts` (like devkit's `hackFixForDevkitPeerDependencies`), update any paths from `./dist/packages/<name>/` to `./packages/<name>/`.
 
-### 14. Update imports across the workspace
+### 14. Update `scripts/patched-jest-resolver.js`
+
+Add `'@nx/nx-source'` to the `conditionNames` array (first entry) so Jest resolves workspace packages to their source via the new exports map condition:
+
+```js
+const enhancedResolver = require('enhanced-resolve').create.sync({
+  conditionNames: ['@nx/nx-source', 'require', 'node', 'default'],
+  ...
+});
+```
+
+Without this, unit tests that import `@nx/<name>` will resolve to `dist/index.js`, which may not exist or may be stale. **This is a one-time change for the workspace** — once it's in place for the first migrated package, you don't need to redo it for subsequent packages.
+
+### 15. Update module-path patches
+
+Search for hardcoded references to `dist/packages/<name>` in patch files (these short-circuit Node's module resolver):
+
+```bash
+grep -rn "dist/packages/<name>" --include="*.js" --include="*.cjs" --include="*.mjs" .
+```
+
+Notable spots:
+
+- `examples/angular-rspack/patch-devkit-request-path.js` (and similar) — change `path.resolve(__dirname, '../../dist/packages/<name>')` to `path.resolve(__dirname, '../../packages/<name>')`. The dist folder is now nested inside the package, so the package root resolves correctly via its `main`/`exports`.
+- Any `tools/patches/**` files.
+
+### 16. Update imports across the workspace
 
 Search for imports from `@nx/<name>/src/` across all other packages. These internal imports need to be updated:
 
-- If the imported thing is re-exported through a public entry point (index.ts, internal.ts, etc.), update the import to use that entry point
-- If not, consider adding it to `internal.ts` or the appropriate entry point
+- If the imported thing is re-exported through a public entry point (index.ts, internal.ts, etc.), update the import to use that entry point.
+- If not, **add it to `internal.ts`** (creating that file if it doesn't exist) and update the import. The exports map is strict — `@nx/<name>/src/...` paths stop working entirely once the migration is in place, so anything previously imported via that path needs an entry-point home.
 
-Use: `grep -r "from '@nx/<name>/src/" packages/ --include="*.ts" -l` to find affected files.
+Use:
+
+```bash
+grep -rn "from '@nx/<name>/src/" --include="*.ts" .
+```
 
 Also check for imports in:
 
-- `e2e/` tests
+- `e2e/` tests — common offenders are tiny utility imports like `@nx/devkit/src/utils/string-utils`. For e2e tests, prefer inlining the utility (a one-line helper) over expanding the public API just to feed an e2e test.
 - `scripts/`
 - `tools/workspace-plugin/`
 - `astro-docs/`
 - `examples/`
 
-### 15. Verify
+### 17. Update e2e tests with hardcoded dist paths
 
-Run:
+Separate from imports: search e2e test bodies for hardcoded path strings referring to the old layout:
+
+```bash
+grep -rn "dist/packages/<name>" e2e/ --include="*.ts"
+```
+
+For example, `e2e/nx-build/src/nx-build.test.ts` verifies build output paths and had `'dist/packages/devkit/index.js'` hardcoded — needs to become `'packages/devkit/dist/index.js'`. These are easy to miss because they look like strings, not imports.
+
+### 18. Verify
 
 ```bash
 pnpm nx run-many -t test,build,lint -p <name>
+pnpm nx affected -t build,test,lint
+pnpm nx prepush
 ```
 
-Then:
+Also run e2e for affected projects — the migration changes the affected graph, which can surface latent failures in dependent e2e tests:
 
 ```bash
-pnpm nx affected -t build,test,lint
+pnpm nx affected -t e2e-local
 ```
+
+If a dependent e2e test fails for reasons unrelated to your migration (pre-existing flake/bug in another package), fix it in a separate PR rather than bundling it into the migration. The migration PR should only contain migration changes.
 
 ### Summary of the pattern
 
