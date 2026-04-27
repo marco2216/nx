@@ -20,6 +20,14 @@ import {
 } from '../package-manager-workspaces';
 import { getNeededCompilerOptionOverrides } from './configuration';
 
+export const TS_SOLUTION_SETUP_TSCONFIG_INPUT: {
+  json: string;
+  fields: string[];
+} = {
+  json: '{workspaceRoot}/tsconfig.json',
+  fields: ['extends', 'files', 'include'],
+};
+
 export function isUsingTypeScriptPlugin(tree: Tree): boolean {
   const nxJson = readNxJson(tree);
 
