@@ -6,7 +6,17 @@ allowed-tools: Bash, Read, Glob, Grep, Agent, Edit, Write
 
 # Migrate Package to Local Dist Build
 
-You are migrating an Nx monorepo package from building to `../../dist/packages/<name>` to building locally to `packages/<name>/dist/`. This matches the pattern already used by `nx` and `devkit`.
+You are migrating an Nx monorepo package from building to `../../dist/packages/<name>` to building locally to `packages/<name>/dist/`.
+
+## Migration status
+
+This is an **incremental, multi-PR migration**. As of writing, only `nx` and `devkit` have completed it. Every other package still builds to the workspace-root `dist/packages/<name>/`. Each migration PR moves one more package; no big-bang switchover.
+
+What this means in practice:
+
+- **Don't change global config to assume the new layout.** The workspace-wide pieces (typedoc `compilerOptions.paths`, jest resolver `conditionNames`, etc.) need to keep working for unmigrated packages too. The current setup handles this with source-path fallbacks (`packages/*/src/*`) and the `@nx/*/src/*` short-circuit in `patched-jest-resolver.js`.
+- **A migrated package importing an unmigrated sibling still works** — the sibling's old `dist/packages/<name>/` is still present in the workspace dist, and the unmigrated package's `package.json` still points there. Source fallbacks cover the typedoc/test paths.
+- **Don't migrate a package whose dist consumers you can't sweep in one PR.** If `@nx/<name>` has hundreds of consumers (e.g. `@nx/js`), you may need to ship the migration in stages, or accept a longer PR. Use the blast-radius grep in Step 1 to estimate.
 
 ## Argument
 
@@ -273,14 +283,14 @@ Expect hits in two files:
 
 - Set `buildDir` to a temp location (`join(tempDir, 'build')`) instead of `join(workspaceRoot, 'dist', 'packages', '<name>')`.
 - Set `compilerOptions.baseUrl = workspaceRoot` so the `paths` entries resolve.
-- Map `compilerOptions.paths` to local dists:
+- Map `compilerOptions.paths` to local dists with a source fallback:
   ```jsonc
   {
     "nx/*": ["packages/nx/dist/*", "packages/nx/src/*"],
     "@nx/*": ["packages/*/dist/*", "packages/*/src/*"],
   }
   ```
-  This is workspace-wide — once it's set, future packages are covered by the `@nx/*` glob.
+  This is workspace-wide and already set by the devkit migration — you should not need to touch it. Migrated packages resolve via the first entry; unmigrated packages resolve via the `src/*` fallback (the workspace-root `dist/packages/*` is intentionally not listed). Source fallback is sufficient for type extraction.
 - Append the package's `dist/**/*.d.ts` to `tsconfigObj.include` using an absolute path (the tsconfig is written to a temp dir, so relative paths break).
 - Remove `'dist'` from `tsconfigObj.exclude` so the dist `.d.ts` files are visible to TypeDoc.
 
@@ -366,3 +376,5 @@ Treat those three as manual checks before opening the PR.
 ### Summary of the pattern
 
 The core idea is simple: instead of building to a shared `dist/packages/<name>/` at the workspace root, each package builds to its own `packages/<name>/dist/`. The `exports` map with `@nx/nx-source` condition lets workspace packages resolve to `.ts` source files during development, while external consumers get the built `.js` from `dist/`. This is like giving each package its own "output mailbox" instead of sharing one big mailbox.
+
+The migration runs incrementally — each PR moves one package onto the new pattern. During the rollout, migrated and unmigrated packages coexist; the workspace-wide configuration (typedoc paths, jest resolver) supports both, primarily through source-path fallbacks.
